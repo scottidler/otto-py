@@ -59,7 +59,7 @@ class Parser:
     def task_to_command(task):
         parser = ArgumentParser(task.name)
         for name, param in task.params.items():
-            short, long_ = name.split('|')
+            short, long_ = Parser.name_to_short_long(name)
             parser.add_argument(
                 short, long_,
                 default=param.default,
@@ -74,6 +74,18 @@ class Parser:
                 name,
                 help=task.help)
         return parser
+
+    @staticmethod
+    def name_to_short_long(name):
+        parts = name.split('|')
+        if len(parts) == 2:
+            return sorted(parts, key=len)
+        if len(parts) == 1:
+            if '--' in parts[0]:
+                return None, parts[0]
+            else:
+                return parts[0], None
+        raise ValueError(f'invalid name {name}')
 
     def indices(self, task_names):
         indices = []
@@ -117,7 +129,24 @@ class Parser:
                     nss.append(ns)
             else:
                 print(f'no tasks in {self.ottofile}')
-                ns = otto.parse_args(self.args)
+                print(f'spec.otto={spec.otto}')
+
+                otto2 = ArgumentParser('otto')
+                for name, param in spec.otto.params.items():
+                    print(f'name={name} param={param}')
+                    short, long_ = Parser.name_to_short_long(name)
+                    print(f'short={short} long={long_}')
+                    if short and long_:
+                        otto2.add_argument(
+                            short, long_,
+                            default=param.default,
+                            help=param.help)
+                    else:
+                        otto2.add_argument(
+                            name,
+                            default=param.default,
+                            help=param.help)
+                ns = otto2.parse_args(self.args)
                 nss.append(ns)
         else:
             print(f'no such file {self.ottofile}')
