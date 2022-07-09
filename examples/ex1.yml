@@ -17,6 +17,7 @@ otto:
           help: toggle flag to true
         pos:
           help: pos help
+      help: punch task
     hello:
       params:
         -g|--greeting:
