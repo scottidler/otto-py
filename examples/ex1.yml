@@ -1,8 +1,9 @@
-defaults:
-  version: 1
-  tasks:
-  - world
 otto:
+  version: 1
+  default:
+    jobs: 12
+    tasks:
+    - world
   tasks:
     punch:
       params:
@@ -31,7 +32,7 @@ otto:
         echo "${greeting:-hello}"
       help: hello task
     world:
-      before:
+      after:
       - hello
       params:
         -n|--name:

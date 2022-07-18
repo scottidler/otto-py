@@ -20,15 +20,13 @@ if os.path.islink(__file__):
 from argparse import ArgumentParser
 from ruamel.yaml import safe_load
 from addict import Addict
+from leatherman.repr import __repr__
 
 OTTO_YML = os.environ.get('OTTO_YML', './otto.yml')
 
 class Parser:
     def __init__(self):
         self.prog, self.args, self.ottofile = Parser.divine_ottofile(sys.argv)
-
-    def __repr__(self):
-        return f'Parser(prog={self.prog}, args={self.args}, ottofile={self.ottofile})'
 
     __str__ = __repr__
 
@@ -46,8 +44,9 @@ class Parser:
             add_help=not nerfed)
         parser.add_argument(
             '-o', '--ottofile',
+            metavar='FILE',
             default=OTTO_YML,
-            help='otto file')
+            help='default="%(default)s"; path to ottofile')
         return parser
 
     @staticmethod
@@ -56,12 +55,13 @@ class Parser:
             return Addict(safe_load(f))
 
     @staticmethod
-    def task_to_command(task):
+    def task_to_parser(task):
         parser = ArgumentParser(task.name)
         for name, param in task.params.items():
-            short, long_ = Parser.name_to_short_long(name)
+            # short, long_ = Parser.name_to_short_long(name)
             parser.add_argument(
-                short, long_,
+                # short, long_,
+                *name.split('|'),
                 default=param.default,
                 help=param.help)
         return parser
@@ -75,17 +75,17 @@ class Parser:
                 help=task.help)
         return parser
 
-    @staticmethod
-    def name_to_short_long(name):
-        parts = name.split('|')
-        if len(parts) == 2:
-            return sorted(parts, key=len)
-        if len(parts) == 1:
-            if '--' in parts[0]:
-                return None, parts[0]
-            else:
-                return parts[0], None
-        raise ValueError(f'invalid name {name}')
+#    @staticmethod
+#    def name_to_short_long(name):
+#        parts = name.split('|')
+#        if len(parts) == 2:
+#            return sorted(parts, key=len)
+#        if len(parts) == 1:
+#            if '--' in parts[0]:
+#                return None, parts[0]
+#            else:
+#                return parts[0], None
+#        raise ValueError(f'invalid name {name}')
 
     def indices(self, task_names):
         indices = []
@@ -106,53 +106,44 @@ class Parser:
 
     def parse(self):
         nss = []
-        otto = Parser.otto_seed(self.prog)
+        otto_parser = Parser.otto_seed(self.prog)
+        ## test if ottofile exists
         if os.path.isfile(self.ottofile):
+            ## ottofile exists
             spec = Parser.load_yaml(self.ottofile)
             task_names = spec.otto.tasks.keys()
             if task_names:
+                ## ottofile has tasks
                 partitions = self.partitions(task_names)
                 if partitions:
+                    ## partitions exist
                     print(f'partitions={partitions}')
                     for partition in partitions:
                         name, *args = partition
                         task = spec.otto.tasks[name]
-                        command = Parser.task_to_command(task)
-                        print(f'name={name} args={args}')
-                        ns = command.parse_args(args)
-                        print(f'ns={ns}')
-                        nss.append(ns)
+                        task_parser = Parser.task_to_parser(task)
+                        ns = task_parser.parse_args(args)
+                        nss.append((name,ns))
                 else:
-                    print(f'not partitions found in args={self.args}')
-                    otto1 = Parser.otto_with_subcommands(otto, spec.otto.tasks)
-                    ns = otto1.parse_args(self.args)
-                    nss.append(ns)
+                    ## no partitions
+                    print(f'no partitions found in args={self.args}')
+                    otto_parser = Parser.otto_with_subcommands(otto_parser, spec.otto.tasks)
+                    ns = otto_parser.parse_args(self.args)
+                    nss.append(('otto', ns))
             else:
-                print(f'no tasks in {self.ottofile}')
-                print(f'spec.otto={spec.otto}')
-
-                otto2 = ArgumentParser('otto')
+                ## ottofile has no tasks
                 for name, param in spec.otto.params.items():
-                    print(f'name={name} param={param}')
-                    short, long_ = Parser.name_to_short_long(name)
-                    print(f'short={short} long={long_}')
-                    if short and long_:
-                        otto2.add_argument(
-                            short, long_,
-                            default=param.default,
-                            help=param.help)
-                    else:
-                        otto2.add_argument(
-                            name,
-                            default=param.default,
-                            help=param.help)
-                ns = otto2.parse_args(self.args)
-                nss.append(ns)
+                    otto_parser.add_argument(
+                        *name.split('|'),
+                        default=param.default,
+                        help=param.help)
+                ns = otto_parser.parse_args(self.args)
+                nss.append(('otto', ns))
         else:
-            print(f'no such file {self.ottofile}')
-            otto.epilog = f'no such file {self.ottofile}'
-            ns = otto.parse_args(['--help'])
-            nss.append(ns)
+            ## ottofile does not exist
+            otto_parser.epilog = f'no such ottofile="{self.ottofile}"'
+            ns = otto_parser.parse_args(['--help'])
+            nss.append(('otto', ns))
         return nss
 
 def main():
