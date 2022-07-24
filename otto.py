@@ -24,18 +24,48 @@ from leatherman.repr import __repr__
 
 OTTO_YML = os.environ.get('OTTO_YML', './otto.yml')
 
+OTTO_FILES = [
+    'otto.yml',
+    'otto.yaml',
+    '.otto.yml',
+    '.otto.yaml',
+]
+
+class MultipleOttofilesFoundError(Exception):
+    def __init__(self, ottofiles, path):
+        msg = f'error: multiple ottofiles={ottofiles} in path={path}'
+        super().__init__(msg)
+
 class Parser:
     def __init__(self):
-        self.prog, self.args, self.ottofile = Parser.divine_ottofile(sys.argv)
+        self.cwd = os.getcwd()
+        self.prog, *self.args = sys.argv
+        self.prog = os.path.basename(self.prog)
+        self.ottofile = self.divine_ottofile()
 
     __str__ = __repr__
 
-    @staticmethod
-    def divine_ottofile(args):
-        prog, *args = args
+    def divine_ottofile(self):
         parser = Parser.otto_seed('otto', True)
-        ns, rem = parser.parse_known_args(args)
-        return (prog, rem, ns.ottofile)
+        ns, rem = parser.parse_known_args(self.args)
+        self.args = rem
+        if ns.ottofile is None:
+            print('ottofile is None')
+            ns.ottofile = Parser.find_ottofile(self.cwd)
+        return ns.ottofile
+
+    @staticmethod
+    def find_ottofile(path):
+        path = os.path.abspath(path)
+        if path == '/':
+            return None
+        _, _, files = next(os.walk(path))
+        intersection = list(set(files) & set(OTTO_FILES))
+        if len(intersection) >= 2:
+            raise MultipleOttofilesFoundError(intersection, path)
+        elif len(intersection) == 1:
+            return os.path.join(path, intersection[0])
+        return Parser.find_ottofile(os.path.dirname(path))
 
     @staticmethod
     def otto_seed(prog: str, nerfed: bool = False):
@@ -45,7 +75,7 @@ class Parser:
         parser.add_argument(
             '-o', '--ottofile',
             metavar='FILE',
-            default=OTTO_YML,
+            default=None,
             help='default="%(default)s"; path to ottofile')
         return parser
 
@@ -108,7 +138,7 @@ class Parser:
         nss = []
         otto_parser = Parser.otto_seed(self.prog)
         ## test if ottofile exists
-        if os.path.isfile(self.ottofile):
+        if self.ottofile and os.path.isfile(self.ottofile):
             ## ottofile exists
             spec = Parser.load_yaml(self.ottofile)
             task_names = spec.otto.tasks.keys()
